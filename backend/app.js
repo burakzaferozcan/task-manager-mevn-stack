@@ -6,12 +6,12 @@ import connectDB from "./config/db.js";
 import userRoutes from "./routes/userRoutes.js";
 const app = express();
 const corsOptions = {
-  origin: "http://localhost:5173",
+  origin: process.env.REMOOT_CLIENT_URL,
   credentials: true,
 };
 dotenv.config();
 app.use(cors(corsOptions));
-app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 
 app.get("/", (req, res) => {

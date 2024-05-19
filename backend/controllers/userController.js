@@ -42,7 +42,6 @@ const sendConfirmationEmail = async (email, token) => {
     throw new Error("Error sending confirmation email: " + error.message);
   }
 };
-
 const confirmEmail = async (req, res) => {
   try {
     const token = req.params.token;

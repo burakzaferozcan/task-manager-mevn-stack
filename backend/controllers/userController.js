@@ -52,11 +52,9 @@ const requestAccountDeletion = async (req, res) => {
   try {
     const { email } = req.body;
     await sendAccountDeletionConfirmationEmail(email);
-    res
-      .status(200)
-      .json({
-        message: "Account deletion confirmation email sent successfully",
-      });
+    res.status(200).json({
+      message: "Account deletion confirmation email sent successfully",
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -199,7 +197,29 @@ const confirmUpdate = async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 };
-
+const resetPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    // Kullanıcıyı bul
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    // Yeni şifre oluşturma
+    const newPassword = Math.random().toString(36).slice(-8); // Rastgele 8 karakterlik şifre oluştur
+    // Kullanıcıya yeni şifreyi ata ve kaydet
+    user.password = newPassword;
+    await user.save();
+    // Yeni şifreyi kullanıcıya e-posta olarak gönder
+    const htmlContent = `<p>Hello ${user.first_name},</p><p>Your password has been reset. Here is your new password: <strong>${newPassword}</strong></p><p>Please log in using this password and change it immediately.</p>`;
+    await sendEmail(email, "Password Reset", htmlContent);
+    res
+      .status(200)
+      .json({ message: "New password has been sent to your email" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
 export {
   createUser,
   confirmEmail,
@@ -208,4 +228,5 @@ export {
   confirmUpdate,
   requestAccountDeletion,
   confirmAccountDeletion,
+  resetPassword,
 };

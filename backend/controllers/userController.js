@@ -1,27 +1,9 @@
 import nodemailer from "nodemailer";
 import jwt from "jsonwebtoken";
 import User from "../models/user.js";
-const createUser = async (req, res) => {
-  try {
-    const { email, first_name, last_name, password } = req.body;
-    const existingEmail = await User.findOne({ email });
-    if (existingEmail) {
-      return res.status(400).json({ message: "Email already exists" });
-    }
-    const confirmationToken = jwt.sign(
-      { email, first_name, last_name, password },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: "1d",
-      }
-    );
-    await sendConfirmationEmail(email, confirmationToken);
-    res.status(201).json({ message: "Confirmation email sent successfully" });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-const sendConfirmationEmail = async (email, token) => {
+import bcrypt from "bcrypt";
+
+const sendEmail = async (email, subject, htmlContent) => {
   try {
     const transporter = nodemailer.createTransport({
       service: "gmail",
@@ -30,37 +12,200 @@ const sendConfirmationEmail = async (email, token) => {
         pass: process.env.PASSWORD,
       },
     });
+
     const mailOptions = {
       from: process.env.EMAIL,
       to: email,
-      subject: "Confirm Your Email",
-      html: `<p>Please click the following link to confirm your email: <a href="${process.env.BASE_SERVER_URL}/auth/confirm/${token}">Confirm Email</a></p>`,
+      subject: subject,
+      html: htmlContent,
     };
+
     await transporter.sendMail(mailOptions);
   } catch (error) {
-    console.error("Error sending confirmation email:", error);
+    console.error("Error sending email:", error);
+    throw new Error("Error sending email: " + error.message);
+  }
+};
+
+const generateToken = (payload, expiresIn = "1d") => {
+  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn });
+};
+
+const decodeToken = (token) => {
+  try {
+    return jwt.verify(token, process.env.JWT_SECRET);
+  } catch (error) {
+    throw new Error("Invalid or expired token");
+  }
+};
+const sendAccountDeletionConfirmationEmail = async (email) => {
+  try {
+    const token = generateToken({ email }, "1d");
+    const htmlContent = `<p>Account Deletion Confirmation: <a href="${process.env.BASE_SERVER_URL}/auth/delete-account/${token}">Confirm Deletion</a></p>`;
+    await sendEmail(email, "Confirm Account Deletion", htmlContent);
+  } catch (error) {
     throw new Error("Error sending confirmation email: " + error.message);
   }
 };
-const confirmEmail = async (req, res) => {
+
+const requestAccountDeletion = async (req, res) => {
+  try {
+    const { email } = req.body;
+    await sendAccountDeletionConfirmationEmail(email);
+    res
+      .status(200)
+      .json({
+        message: "Account deletion confirmation email sent successfully",
+      });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const confirmAccountDeletion = async (req, res) => {
   try {
     const token = req.params.token;
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const { email, first_name, last_name, password } = decoded;
+    const decoded = decodeToken(token);
+    const { email } = decoded;
+
+    await User.findOneAndDelete({ email });
+
+    res.status(200).json({ message: "Account deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+const createUser = async (req, res) => {
+  try {
+    const { email, first_name, last_name, password } = req.body;
     const existingEmail = await User.findOne({ email });
     if (existingEmail) {
       return res.status(400).json({ message: "Email already exists" });
     }
+
+    const confirmationToken = generateToken({
+      email,
+      first_name,
+      last_name,
+      password,
+    });
+
+    const htmlContent = `<p>Hello ${first_name}, Please click the following link to confirm your email: <a href="${process.env.BASE_SERVER_URL}/auth/confirm/${confirmationToken}">Confirm Email</a></p>`;
+    await sendEmail(email, "Confirm Your Email", htmlContent);
+
+    res.status(201).json({ message: "Confirmation email sent successfully" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ message: "Invalid email or password" });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Invalid email or password" });
+    }
+
+    const token = generateToken({ id: user._id }, "14d");
+
+    res.status(200).json({ message: "Login successful", token, user });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const updateUser = async (req, res) => {
+  try {
+    const { email, first_name, last_name, password } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    user.first_name = first_name || user.first_name;
+    user.last_name = last_name || user.last_name;
+    if (password) {
+      const salt = await bcrypt.genSalt(10);
+      user.password = await bcrypt.hash(password, salt);
+    }
+
+    const updateToken = generateToken({
+      email,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      password: user.password,
+    });
+
+    const htmlContent = `<p>Hello ${user.first_name}, Please click the following link to confirm your profile update: <a href="${process.env.BASE_SERVER_URL}/auth/update/confirm/${updateToken}">Confirm Update</a></p>`;
+    await sendEmail(email, "Confirm Your Profile Update", htmlContent);
+
+    res
+      .status(200)
+      .json({ message: "Profile update confirmation email sent successfully" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const confirmEmail = async (req, res) => {
+  try {
+    const token = req.params.token;
+    const decoded = decodeToken(token);
+    const { email, first_name, last_name, password } = decoded;
+
+    const existingEmail = await User.findOne({ email });
+    if (existingEmail) {
+      return res.status(400).json({ message: "Email already exists" });
+    }
+
     const newUser = new User({ email, first_name, last_name, password });
     await newUser.save();
+
     res
       .status(200)
       .json({ message: "Email confirmed and user created successfully" });
   } catch (error) {
-    res
-      .status(400)
-      .json({ message: "Invalid or expired token", error: error.message });
+    res.status(400).json({ message: error.message });
   }
 };
 
-export { createUser, confirmEmail };
+const confirmUpdate = async (req, res) => {
+  try {
+    const token = req.params.token;
+    const decoded = decodeToken(token);
+    const { email, first_name, last_name, password } = decoded;
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    user.first_name = first_name;
+    user.last_name = last_name;
+    if (password) {
+      const salt = await bcrypt.genSalt(10);
+      user.password = await bcrypt.hash(password, salt);
+    }
+
+    await user.save();
+    res.status(200).json({ message: "Profile updated successfully" });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+export {
+  createUser,
+  confirmEmail,
+  login,
+  updateUser,
+  confirmUpdate,
+  requestAccountDeletion,
+  confirmAccountDeletion,
+};

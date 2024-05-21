@@ -5,6 +5,7 @@ import bcrypt from "bcrypt";
 
 const sendEmail = async (email, subject, htmlContent) => {
   try {
+    // createTransport e posta gönderme aracı
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -12,14 +13,14 @@ const sendEmail = async (email, subject, htmlContent) => {
         pass: process.env.PASSWORD,
       },
     });
-
+    // mailOptions içerisinde göndereceğimiz mesajı tanımlıyoruz.
     const mailOptions = {
       from: process.env.EMAIL,
       to: email,
       subject: subject,
       html: htmlContent,
     };
-
+    // mailOptions içerisinde tanımladığımız mesajı gönderiyoruz.
     await transporter.sendMail(mailOptions);
   } catch (error) {
     console.error("Error sending email:", error);
@@ -229,4 +230,7 @@ export {
   requestAccountDeletion,
   confirmAccountDeletion,
   resetPassword,
+  sendEmail,
+  generateToken,
+  decodeToken,
 };

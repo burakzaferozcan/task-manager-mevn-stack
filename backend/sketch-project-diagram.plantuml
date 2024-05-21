@@ -33,6 +33,7 @@ entity UserController {
 entity TaskController {
 +createTask()
 +getTasks()
++getTask()
 +updateTask()
 +deleteTask()
 +toggleTaskStatus()

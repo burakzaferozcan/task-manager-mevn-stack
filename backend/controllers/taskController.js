@@ -4,18 +4,14 @@ import User from "../models/user.js";
 export async function createTask(req, res) {
   try {
     // İstek gövdesinden gerekli alanları al
-    const { title, description, due_date, userId } = req.body;
+    const { title, description, due_date } = req.body;
+
+    // Kullanıcı kimliğini doğrulanmış kullanıcıdan al
+    const userId = req.user.id;
 
     // Tüm gerekli alanlar mevcut mu kontrol et
     if (!title || !description || !due_date || !userId) {
       return res.status(400).json({ error: "All fields are required." });
-    }
-
-    // Kullanıcıyı kullanıcı kimliğine göre bul
-    const user = await User.findById(userId);
-
-    if (!user) {
-      return res.status(404).json({ error: "User not found." });
     }
 
     // Yeni bir görev nesnesi oluştur
@@ -23,7 +19,7 @@ export async function createTask(req, res) {
       title,
       description,
       due_date,
-      status: false,
+      userId, // userId'yi eklemeyi unutmayın
     });
 
     // Görevi veritabanına kaydet
@@ -31,6 +27,7 @@ export async function createTask(req, res) {
 
     res.json({ message: "Task created successfully." });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: "Failed to create task." });
   }
 }

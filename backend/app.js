@@ -7,7 +7,7 @@ import userRoutes from "./routes/userRoutes.js";
 import taskRoutes from "./routes/taskRoutes.js";
 const app = express();
 const corsOptions = {
-  origin: process.env.REMOOT_CLIENT_URL,
+  origin: "http://localhost:5173",
   credentials: true,
 };
 
@@ -30,5 +30,5 @@ try {
     );
   });
 } catch (error) {
-  // process.exit(1);
+  process.exit(1);
 }

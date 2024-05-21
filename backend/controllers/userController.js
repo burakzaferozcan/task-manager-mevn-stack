@@ -42,7 +42,7 @@ const decodeToken = (token) => {
 const sendAccountDeletionConfirmationEmail = async (email) => {
   try {
     const token = generateToken({ email }, "1d");
-    const htmlContent = `<p>Account Deletion Confirmation: <a href="${process.env.BASE_SERVER_URL}/auth/delete-account/${token}">Confirm Deletion</a></p>`;
+    const htmlContent = `<p>Account Deletion Confirmation: <a href="${process.env.BASE_SERVER_URL}/api/auth/delete-account/${token}">Confirm Deletion</a></p>`;
     await sendEmail(email, "Confirm Account Deletion", htmlContent);
   } catch (error) {
     throw new Error("Error sending confirmation email: " + error.message);
@@ -89,7 +89,7 @@ const createUser = async (req, res) => {
       password,
     });
 
-    const htmlContent = `<p>Hello ${first_name}, Please click the following link to confirm your email: <a href="${process.env.BASE_SERVER_URL}/auth/confirm/${confirmationToken}">Confirm Email</a></p>`;
+    const htmlContent = `<p>Hello ${first_name}, Please click the following link to confirm your email: <a href="${process.env.BASE_SERVER_URL}/api/auth/confirm/${confirmationToken}">Confirm Email</a></p>`;
     await sendEmail(email, "Confirm Your Email", htmlContent);
 
     res.status(201).json({ message: "Confirmation email sent successfully" });
@@ -141,7 +141,7 @@ const updateUser = async (req, res) => {
       password: user.password,
     });
 
-    const htmlContent = `<p>Hello ${user.first_name}, Please click the following link to confirm your profile update: <a href="${process.env.BASE_SERVER_URL}/auth/update/confirm/${updateToken}">Confirm Update</a></p>`;
+    const htmlContent = `<p>Hello ${user.first_name}, Please click the following link to confirm your profile update: <a href="${process.env.BASE_SERVER_URL}/api/auth/update/confirm/${updateToken}">Confirm Update</a></p>`;
     await sendEmail(email, "Confirm Your Profile Update", htmlContent);
 
     res

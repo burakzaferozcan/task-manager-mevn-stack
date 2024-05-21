@@ -1,14 +1,15 @@
 import jwt from "jsonwebtoken";
-import bcrypt from "bcrypt";
-import User from "../models/user.js";
+
 export const verifyToken = (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1];
+  const authHeader = req.header("Authorization");
+  const token = authHeader && authHeader.split(" ")[1]; // Bearer token'ı ayırır
   if (!token) {
-    return res.status(401).json({ message: "No token provided" });
+    return res.status(401).json({ message: "Access Denied" });
   }
+
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
+    const verified = jwt.verify(token, process.env.JWT_SECRET); // Token'ı doğrula
+    req.user = verified;
     next();
   } catch (error) {
     res.status(400).json({ message: "Invalid token" });

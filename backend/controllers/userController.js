@@ -1,53 +1,14 @@
-import nodemailer from "nodemailer";
-import jwt from "jsonwebtoken";
-import User from "../models/user.js";
-import bcrypt from "bcrypt";
-
-const sendEmail = async (email, subject, htmlContent) => {
-  try {
-    // createTransport e posta gönderme aracı
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL,
-        pass: process.env.PASSWORD,
-      },
-    });
-    // mailOptions içerisinde göndereceğimiz mesajı tanımlıyoruz.
-    const mailOptions = {
-      from: process.env.EMAIL,
-      to: email,
-      subject: subject,
-      html: htmlContent,
-    };
-    // mailOptions içerisinde tanımladığımız mesajı gönderiyoruz.
-    await transporter.sendMail(mailOptions);
-  } catch (error) {
-    console.error("Error sending email:", error);
-    throw new Error("Error sending email: " + error.message);
-  }
-};
-
-const generateToken = (payload, expiresIn = "1d") => {
-  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn });
-};
-
-const decodeToken = (token) => {
-  try {
-    return jwt.verify(token, process.env.JWT_SECRET);
-  } catch (error) {
-    throw new Error("Invalid or expired token");
-  }
-};
-const sendAccountDeletionConfirmationEmail = async (email) => {
-  try {
-    const token = generateToken({ email }, "1d");
-    const htmlContent = `<p>Account Deletion Confirmation: <a href="${process.env.BASE_SERVER_URL}/api/auth/delete-account/${token}">Confirm Deletion</a></p>`;
-    await sendEmail(email, "Confirm Account Deletion", htmlContent);
-  } catch (error) {
-    throw new Error("Error sending confirmation email: " + error.message);
-  }
-};
+import sendEmail from "../utils/sendEmail.js";
+import generateToken from "../utils/generateToken.js";
+import decodeToken from "../utils/decodeToken.js";
+import sendAccountDeletionConfirmationEmail from "../utils/sendAccountDeletionConfirmationEmail.js";
+import { hashPassword, comparePassword } from "../utils/bcryptUtils.js";
+import {
+  findUserByEmail,
+  createUser,
+  deleteUserByEmail,
+  updateUserByEmail,
+} from "../utils/userUtils.js";
 
 const requestAccountDeletion = async (req, res) => {
   try {
@@ -67,26 +28,29 @@ const confirmAccountDeletion = async (req, res) => {
     const decoded = decodeToken(token);
     const { email } = decoded;
 
-    await User.findOneAndDelete({ email });
+    await deleteUserByEmail(email);
 
     res.status(200).json({ message: "Account deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
-const createUser = async (req, res) => {
+
+const createUserController = async (req, res) => {
   try {
     const { email, first_name, last_name, password } = req.body;
-    const existingEmail = await User.findOne({ email });
+    const existingEmail = await findUserByEmail(email);
     if (existingEmail) {
       return res.status(400).json({ message: "Email already exists" });
     }
+
+    const hashedPassword = await hashPassword(password);
 
     const confirmationToken = generateToken({
       email,
       first_name,
       last_name,
-      password,
+      password: hashedPassword,
     });
 
     const htmlContent = `<p>Hello ${first_name}, Please click the following link to confirm your email: <a href="${process.env.BASE_SERVER_URL}/api/auth/confirm/${confirmationToken}">Confirm Email</a></p>`;
@@ -101,12 +65,12 @@ const createUser = async (req, res) => {
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    const user = await User.findOne({ email });
+    const user = await findUserByEmail(email);
     if (!user) {
       return res.status(400).json({ message: "Invalid email or password" });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
+    const isMatch = await comparePassword(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: "Invalid email or password" });
     }
@@ -122,26 +86,30 @@ const login = async (req, res) => {
 const updateUser = async (req, res) => {
   try {
     const { email, first_name, last_name, password } = req.body;
-    const user = await User.findOne({ email });
+    const user = await findUserByEmail(email);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    user.first_name = first_name || user.first_name;
-    user.last_name = last_name || user.last_name;
+    const updates = {
+      first_name: first_name || user.first_name,
+      last_name: last_name || user.last_name,
+    };
+
     if (password) {
-      const salt = await bcrypt.genSalt(10);
-      user.password = await bcrypt.hash(password, salt);
+      updates.password = await hashPassword(password);
     }
+
+    await updateUserByEmail(email, updates);
 
     const updateToken = generateToken({
       email,
-      first_name: user.first_name,
-      last_name: user.last_name,
-      password: user.password,
+      first_name: updates.first_name,
+      last_name: updates.last_name,
+      password: updates.password,
     });
 
-    const htmlContent = `<p>Hello ${user.first_name}, Please click the following link to confirm your profile update: <a href="${process.env.BASE_SERVER_URL}/api/auth/update/confirm/${updateToken}">Confirm Update</a></p>`;
+    const htmlContent = `<p>Hello ${updates.first_name}, Please click the following link to confirm your profile update: <a href="${process.env.BASE_SERVER_URL}/api/auth/update/confirm/${updateToken}">Confirm Update</a></p>`;
     await sendEmail(email, "Confirm Your Profile Update", htmlContent);
 
     res
@@ -158,13 +126,12 @@ const confirmEmail = async (req, res) => {
     const decoded = decodeToken(token);
     const { email, first_name, last_name, password } = decoded;
 
-    const existingEmail = await User.findOne({ email });
+    const existingEmail = await findUserByEmail(email);
     if (existingEmail) {
       return res.status(400).json({ message: "Email already exists" });
     }
 
-    const newUser = new User({ email, first_name, last_name, password });
-    await newUser.save();
+    await createUser(email, first_name, last_name, password);
 
     res
       .status(200)
@@ -180,38 +147,36 @@ const confirmUpdate = async (req, res) => {
     const decoded = decodeToken(token);
     const { email, first_name, last_name, password } = decoded;
 
-    const user = await User.findOne({ email });
+    const user = await findUserByEmail(email);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    user.first_name = first_name;
-    user.last_name = last_name;
+    const updates = { first_name, last_name };
     if (password) {
-      const salt = await bcrypt.genSalt(10);
-      user.password = await bcrypt.hash(password, salt);
+      updates.password = await hashPassword(password);
     }
 
-    await user.save();
+    await updateUserByEmail(email, updates);
+
     res.status(200).json({ message: "Profile updated successfully" });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
 };
+
 const resetPassword = async (req, res) => {
   try {
     const { email } = req.body;
-    // Kullanıcıyı bul
-    const user = await User.findOne({ email });
+    const user = await findUserByEmail(email);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
-    // Yeni şifre oluşturma
-    const newPassword = Math.random().toString(36).slice(-8); // Rastgele 8 karakterlik şifre oluştur
-    // Kullanıcıya yeni şifreyi ata ve kaydet
-    user.password = newPassword;
+
+    const newPassword = Math.random().toString(36).slice(-8);
+    user.password = await hashPassword(newPassword);
     await user.save();
-    // Yeni şifreyi kullanıcıya e-posta olarak gönder
+
     const htmlContent = `<p>Hello ${user.first_name},</p><p>Your password has been reset. Here is your new password: <strong>${newPassword}</strong></p><p>Please log in using this password and change it immediately.</p>`;
     await sendEmail(email, "Password Reset", htmlContent);
     res
@@ -221,8 +186,9 @@ const resetPassword = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
 export {
-  createUser,
+  createUserController as createUser,
   confirmEmail,
   login,
   updateUser,
@@ -230,7 +196,4 @@ export {
   requestAccountDeletion,
   confirmAccountDeletion,
   resetPassword,
-  sendEmail,
-  generateToken,
-  decodeToken,
 };

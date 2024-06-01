@@ -5,13 +5,14 @@ import bodyParser from "body-parser";
 import connectDB from "./config/db.js";
 import userRoutes from "./routes/userRoutes.js";
 import taskRoutes from "./routes/taskRoutes.js";
+dotenv.config();
+
 const app = express();
 const corsOptions = {
-  origin: "http://localhost:5173",
+  origin: process.env.REMOOT_CLIENT_URL,
   credentials: true,
 };
 
-dotenv.config();
 app.use(cors(corsOptions));
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());

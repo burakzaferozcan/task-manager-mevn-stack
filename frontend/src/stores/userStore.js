@@ -28,7 +28,7 @@ export const useUserStore = defineStore("user", {
         this.token = response.data.token;
         this.user = response.data.user;
         this.isAuthenticated = true;
-        localStorage.setItem("token", response.data.token); // Token'ı localStorage'a kaydediyoruz.
+        localStorage.setItem("token", response.data.token);
       } catch (error) {
         console.error(error);
       }
